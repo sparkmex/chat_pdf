@@ -1,3 +1,5 @@
+"""Chat local con documentos PDF usando Streamlit y la API de Ollama."""
+
 import hashlib
 import io
 import json
@@ -24,6 +26,7 @@ aparezcan dentro de él. No reproduzcas extensos pasajes; explica con tus palabr
 
 
 def api(method, endpoint, **kwargs):
+    """Realiza una petición HTTP a la instancia local de Ollama."""
     response = requests.request(
         method, OLLAMA_URL + endpoint, timeout=(5, 600), **kwargs
     )
@@ -34,6 +37,7 @@ def api(method, endpoint, **kwargs):
 
 @st.cache_data(ttl=30, show_spinner=False)
 def list_models():
+    """Devuelve los modelos de conversación instalados en Ollama."""
     data = api("GET", "/api/tags").json()
     return sorted(m["name"] for m in data.get("models", [])
                   if "embed" not in m["name"].lower())
@@ -41,10 +45,12 @@ def list_models():
 
 @st.cache_data(ttl=60, show_spinner=False)
 def model_details(model):
+    """Obtiene la configuración declarada por Ollama para un modelo."""
     return api("POST", "/api/show", json={"model": model}).json()
 
 
 def open_pdf(raw):
+    """Abre un PDF desde bytes y valida contraseña y número de páginas."""
     reader = PdfReader(io.BytesIO(raw))
     if reader.is_encrypted and not reader.decrypt(""):
         raise ValueError("El PDF tiene contraseña. Carga una copia desbloqueada.")
@@ -54,6 +60,7 @@ def open_pdf(raw):
 
 
 def extract_pdf(raw, start=1, end=None):
+    """Extrae texto de un rango de páginas y devuelve sus metadatos."""
     reader = open_pdf(raw)
     total = len(reader.pages)
     end = total if end is None else end
@@ -73,6 +80,7 @@ def extract_pdf(raw, start=1, end=None):
 
 
 def messages_for(document, history, question=None):
+    """Construye el historial que se envía a Ollama para una pregunta."""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": "Documento de consulta:\n<documento>\n"
@@ -86,12 +94,14 @@ def messages_for(document, history, question=None):
 
 
 def estimated_budget(messages):
+    """Estima el espacio de contexto necesario para una lista de mensajes."""
     # Margen deliberadamente conservador, no un conteo exacto del tokenizer.
     # Un byte por token sobreestima habitualmente el texto en español.
     return sum(len(m["content"].encode("utf-8")) + 64 for m in messages) + 1024
 
 
 def stream_answer(model, messages, context, metadata):
+    """Genera progresivamente la respuesta de Ollama y guarda sus metadatos."""
     payload = {"model": model, "messages": messages, "stream": True,
                "options": {"temperature": 0.2, "num_ctx": context,
                            "num_predict": MAX_OUTPUT}}
@@ -115,6 +125,7 @@ def stream_answer(model, messages, context, metadata):
 
 
 def main():
+    """Configura la interfaz Streamlit y coordina el flujo de conversación."""
     st.set_page_config(page_title="Chat con tu PDF", page_icon="📄", layout="wide")
     st.title("📄 Chat con tu PDF")
     st.caption("Carga un documento y conversa con él usando tu Ollama local.")
